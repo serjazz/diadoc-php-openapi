@@ -1,19 +1,36 @@
-Клиент API для diadoc.ru
----------------------------
+# Клиент API Диадок для PHP
 
-Клиент API diadoc.ru.
+PHP-библиотека для работы с API Диадок (protobuf + HTTP), совместимая с PHP 7.1.
 
-За основу был взят другой клиент.
-https://github.com/agentsib/diadoc-php
+## Происхождение и доработки
 
-Работа над ним давно тормознулась и пришлось добавлять новые методы, чтобы оно заработало.
+За основу взят модуль [`magdv/diadoc-php`](https://github.com/magdv/diadoc-php).  
+В рамках этого репозитория выполнены ключевые доработки:
 
-Документация
-https://developer.kontur.ru/Docs/diadoc-api/http/PostMessage.html
+- перевод авторизации на OpenID Connect (Authorization Code Flow) вместо устаревшего `DiadocAuth`/`/Authenticate`;
+- добавлен `Bearer`-заголовок и обработка жизненного цикла `access_token`/`refresh_token`;
+- добавлено проактивное и реактивное обновление токена (refresh);
+- обновлены примеры, тестовая обвязка и конфигурация окружения;
+- добавлен локальный тестовый OAuth-сервер для сценария CLI + браузер.
 
-## Пример
+Документация API Диадок:
+- [Интеграция с API](https://developer.kontur.ru/Docs/diadoc-api/howtostart/integration.html)
+- [Авторизация (OIDC)](https://developer.kontur.ru/docs/diadoc-api/authentication.html)
 
-Авторизация — по [OpenID Connect (Authorization Code)](https://developer.kontur.ru/docs/diadoc-api/authentication.html): получите `code` на `redirect_uri`, затем обменяйте его на токены.
+## Требования
+
+- PHP `>=7.1.3` (проект тестируется на `7.1.33`);
+- расширения `ext-curl`, `ext-json`;
+- `composer`;
+- для генерации классов из proto: установленный `protoc`.
+
+## Установка
+
+```bash
+composer install
+```
+
+## Быстрый пример использования
 
 ```php
 <?php
@@ -22,78 +39,123 @@ declare(strict_types=1);
 
 require __DIR__ . '/vendor/autoload.php';
 
+use MagDv\Diadoc\DiadocApi;
+
 $clientId = 'ваш-client_id';
 $clientSecret = 'ваш-client_secret';
 $redirectUri = 'https://ваше-приложение/oauth/callback';
 
-$api = new \MagDv\Diadoc\DiadocApi(
+$api = new DiadocApi(
     $clientId,
     $clientSecret,
-    'https://diadoc-api.kontur.ru/'
+    'https://diadoc-api.kontur.ru/' // или тестовый URL
 );
 
-// 1) Отправьте пользователя в браузере на этот URL:
-$loginUrl = $api->buildAuthorizationUrl($redirectUri, 'произвольный-state', null);
+// 1) Получить URL входа и отправить пользователя в браузер:
+$loginUrl = $api->buildAuthorizationUrl($redirectUri, 'state-value', null);
 
 // 2) В обработчике callback после редиректа с ?code=...:
 // $api->exchangeAuthorizationCode($_GET['code'], $redirectUri);
 
-// Если токены уже есть (из кеша):
+// 3) Или восстановить ранее сохраненную сессию:
 // $api->setOAuthSession($accessToken, $refreshToken, $expiresAtUnix);
 
-// Дальше нужен действующий access_token (после exchange или setOAuthSession).
-
-// выводим список контрагентов нашей организации
-$orgId = 'ламлвоалоывлолыовлаоыловалоыва';
-$contragents = $api->getCountragentsV2($orgId);
-
-// количество контрагентов
-var_dump($contragents->getTotalCount());
-
-/** @var Diadoc\Proto\Counteragent $item */
-foreach ($contragents->getCounteragents() as $item) {
-    $org = $item->getOrganization();
-    // пример вывода данных из ответа
-    if ($org) {
-        $d = [];
-        $d['konturId'] = $org->getOrgId();
-        $d['inn'] = $org->getInn();
-        $d['fullName'] = $org->getFullName();
-        $d['shortName'] = $org->getShortName();
-        $d['kpp'] = $org->getKpp();
-        $d['ogrn'] = $org->getOgrn();
-        $d['isRoaming'] = $org->getIsRoaming();
-    }
-    var_dump($d);
-}
+$orgList = $api->getMyOrganizations();
+echo $orgList->getOrganizations()[0]->getOrgId();
 ```
 
+## Конфигурация окружения
 
-## Тесты
+Пример в `.env.example`.
 
-     Тест не дает полной картины работоспособности апи. 
-     Мы не можем быть уверены, что нам всегда возвращают нужные данные, т.к. стенд тестовый.
-     Тут я скорее проверяют, что обращаюсь куда надо и что плюс-минус все работает.
+Основные переменные:
 
-## Как вести разработку
+- `OAUTH_CLIENT_ID` — `client_id` приложения из кабинета интегратора;
+- `OAUTH_CLIENT_SECRET` — `client_secret` приложения;
+- `OAUTH_IDENTITY_URL` — URL identity-провайдера (обычно `https://identity.kontur.ru`);
+- `DIADOC_URL` — базовый URL API Диадок (prod / staging / test);
+- `OAUTH_REDIRECT_URI` — redirect для OAuth callback (для локального теста по умолчанию `http://127.0.0.1:8765/oauth/callback`);
+- `ORG_ID`, `FROM_BOX_ID`, `TO_BOX_ID` — данные для интеграционных тестов.
 
-В композере я подключил скрипты:
-- Для кодстайла `composer fix-style`
-- Генерация php классов из proto файлов `composer generate-proto`. Чтобы генерация работала, надо чтобы в системе был установлен `protobuf`
-- Запуск Ректора `composer rector` (подключил для разовой помощи, но решил оставить)
+Опционально (ручная подстановка токенов):
 
-Можно также использовать `Makefile` для всех перечисленных выше возможностей.
+- `DIADOC_ACCESS_TOKEN`
+- `DIADOC_REFRESH_TOKEN`
+- `DIADOC_ACCESS_EXPIRES_AT` (unix timestamp)
 
-## Генерация php классов из proto файлов
+## Развертывание (локально через Docker)
 
-Вся логика по выборке прото файлов находится в файле `testAuth.php`. 
-Если что - то новое появилось в описании апи диадока или вдруг тупо не хватает, то надо это изменить сначала в прото файлах.
-- Идем в каталог `proto` тут ищем необходимое или добавляем новое.
-- Запукаем `composer generate-proto`
-- Смотрим, что у нас сгенерировалось в папке `phpProto`
-- Теперь надо заиспользовать новые поля в нашем коде.
+В проекте есть `docker-compose.yml` с сервисами:
 
-Можно также использовать `Makefile` для всех перечисленных выше возможностей.
+- `cli` — запуск скриптов, smoke и интеграционных проверок;
+- `oauth-test` (профиль `oauth`) — встроенный PHP-сервер для получения OAuth-токена через браузер.
 
-## Генерация тестового сертификата
-https://losst.pro/sozdanie-sertifikata-openssl
+### Запуск CLI-среды
+
+```bash
+docker compose run --rm cli composer install
+```
+
+### Запуск тестового OAuth-сервера
+
+```bash
+docker compose --profile oauth up --build oauth-test
+```
+
+После запуска откройте в браузере:
+
+- `http://127.0.0.1:8765/`
+
+Важно:
+
+- в кабинете интегратора должен быть зарегистрирован **ровно тот же** `redirect_uri`, что и `OAUTH_REDIRECT_URI`;
+- для локального сценария по умолчанию: `http://127.0.0.1:8765/oauth/callback`.
+
+После успешного callback сервер:
+
+- сохраняет OAuth-сессию в `var/oauth_last_session.json`;
+- сохраняет кэш-сессию в `var/*.cache` (формат совместим с `tests/helpers/ApiClient.php`).
+
+## Тестирование
+
+### 1) Smoke/compat тест
+
+Проверяет:
+
+- PHP/расширения;
+- синтаксис `src/` и `phpProto/`;
+- автозагрузку;
+- базовый protobuf roundtrip;
+- критичные конструкторы/хелперы.
+
+Запуск:
+
+```bash
+docker compose run --rm cli composer run test:compat
+```
+
+### 2) Интеграционный тест с реальным API
+
+Пример проверки чтения контрагентов:
+
+```bash
+docker compose run --rm cli php -r "require 'vendor/autoload.php'; use Test\helpers\ApiClient; \$api = (new ApiClient())->getApi(); \$orgId = getenv('ORG_ID'); \$counteragents = \$api->getCountragentsV2(\$orgId); echo 'totalCount=' . \$counteragents->getTotalCount() . PHP_EOL;"
+```
+
+Если приходит `Organization ... is not found`, обновите `ORG_ID` значением из `getMyOrganizations()` текущего пользователя в той же среде (`DIADOC_URL`).
+
+## Разработка
+
+Полезные команды:
+
+- `composer run generate-proto` — генерация PHP-классов из `proto/`;
+- `composer run test:compat` — smoke-проверка совместимости.
+
+## Генерация классов из proto
+
+Поток работы:
+
+1. Обновить/добавить схемы в `proto/`;
+2. Выполнить `composer run generate-proto`;
+3. Проверить сгенерированный код в `phpProto/`;
+4. Обновить использование новых полей/методов в `src/`.
