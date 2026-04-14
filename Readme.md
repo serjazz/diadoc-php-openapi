@@ -13,6 +13,8 @@ PHP-библиотека для работы с API Диадок (protobuf + HTT
 - обновлены примеры, тестовая обвязка и конфигурация окружения;
 - добавлен локальный тестовый OAuth-сервер для сценария CLI + браузер.
 
+**Механизм авторизации актуальный на 14.04.2026**
+
 Документация API Диадок:
 - [Интеграция с API](https://developer.kontur.ru/Docs/diadoc-api/howtostart/integration.html)
 - [Авторизация (OIDC)](https://developer.kontur.ru/docs/diadoc-api/authentication.html)
