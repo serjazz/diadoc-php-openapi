@@ -1,0 +1,39 @@
+services:
+
+    # Локальный тест OAuth: docker compose --profile oauth up oauth-test
+    # Браузер: http://127.0.0.1:8765/  → см. .env.example (OAUTH_REDIRECT_URI)
+    oauth-test:
+        profiles:
+            - oauth
+        env_file:
+            - .env
+        dns:
+            - 8.8.8.8
+            - 1.1.1.1
+        build:
+            context: docker
+            dockerfile: development/php-cli/Dockerfile
+        working_dir: /app
+        ports:
+            - "8765:8765"
+        volumes:
+            - .:/app
+        command: ["php", "-S", "0.0.0.0:8765", "docker/oauth-test/router.php"]
+
+    cli:
+        env_file:
+            - .env
+        # DNS: таймауты Composer к repo.packagist.org часто из-за резолва/маршрута из контейнера
+        dns:
+            - 8.8.8.8
+            - 1.1.1.1
+        environment:
+            # Таймаут загрузки (мс); по умолчанию ~10 с — мало при медленном канале/VPN
+            COMPOSER_PROCESS_TIMEOUT: "600"
+        build:
+            context: docker
+            dockerfile: development/php-cli/Dockerfile
+        tty: true
+        stdin_open: true
+        volumes:
+            - .:/app
