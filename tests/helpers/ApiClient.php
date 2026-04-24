@@ -74,30 +74,37 @@ class ApiClient
 
     private function restoreOrLoadOAuthSession(): void
     {
-        $cached = $this->cache->get(ConfigNames::DIADOC_OAUTH_CACHE_KEY);
-        if ($cached !== false && is_string($cached)) {
-            $data = json_decode($cached, true);
-            if (is_array($data) && !empty($data['access_token'])) {
-                $this->api->setOAuthSession(
-                    $data['access_token'],
-                    isset($data['refresh_token']) ? $data['refresh_token'] : null,
-                    isset($data['expires_at']) ? (int) $data['expires_at'] : null
-                );
+        $sourceRaw = getenv(ConfigNames::OAUTH_TOKEN_SOURCE);
+        $source = $sourceRaw !== false && $sourceRaw !== '' ? strtolower(trim($sourceRaw)) : 'env_first';
+        $ignoreCacheRaw = getenv(ConfigNames::OAUTH_IGNORE_CACHE);
+        $ignoreCache = $ignoreCacheRaw !== false && in_array(strtolower(trim((string) $ignoreCacheRaw)), ['1', 'true', 'yes', 'on'], true);
 
+        if ($source === 'env' || $source === 'env_first') {
+            if ($this->loadOAuthSessionFromEnv()) {
                 return;
+            }
+            if ($source === 'env') {
+                throw new \RuntimeException(
+                    'OAUTH_TOKEN_SOURCE=env, но DIADOC_ACCESS_TOKEN не задан в .env.'
+                );
             }
         }
 
-        $access = getenv(ConfigNames::DIADOC_ACCESS_TOKEN);
-        if ($access !== false && $access !== '') {
-            $exp = getenv(ConfigNames::DIADOC_ACCESS_EXPIRES_AT);
-            $this->api->setOAuthSession(
-                $access,
-                getenv(ConfigNames::DIADOC_REFRESH_TOKEN) ?: null,
-                $exp !== false && $exp !== '' ? (int) $exp : null
-            );
+        if (!$ignoreCache && ($source === 'cache' || $source === 'cache_first' || $source === 'env_first')) {
+            if ($this->loadOAuthSessionFromCache()) {
+                return;
+            }
+            if ($source === 'cache') {
+                throw new \RuntimeException(
+                    'OAUTH_TOKEN_SOURCE=cache, но в кеше нет корректной OAuth-сессии (ключ ' . ConfigNames::DIADOC_OAUTH_CACHE_KEY . ').'
+                );
+            }
+        }
 
-            return;
+        if ($source === 'cache_first') {
+            if ($this->loadOAuthSessionFromEnv()) {
+                return;
+            }
         }
 
         throw new \RuntimeException(
@@ -106,5 +113,41 @@ class ApiClient
             . 'либо задайте DIADOC_ACCESS_TOKEN (и при необходимости DIADOC_REFRESH_TOKEN, DIADOC_ACCESS_EXPIRES_AT). '
             . 'Первичное получение кода: откройте buildAuthorizationUrl() в браузере и выполните exchangeAuthorizationCode().'
         );
+    }
+
+    private function loadOAuthSessionFromCache(): bool
+    {
+        $cached = $this->cache->get(ConfigNames::DIADOC_OAUTH_CACHE_KEY);
+        if ($cached === false || !is_string($cached) || $cached === '') {
+            return false;
+        }
+        $data = json_decode($cached, true);
+        if (!is_array($data) || empty($data['access_token'])) {
+            return false;
+        }
+
+        $this->api->setOAuthSession(
+            $data['access_token'],
+            isset($data['refresh_token']) ? $data['refresh_token'] : null,
+            isset($data['expires_at']) ? (int) $data['expires_at'] : null
+        );
+
+        return true;
+    }
+
+    private function loadOAuthSessionFromEnv(): bool
+    {
+        $access = getenv(ConfigNames::DIADOC_ACCESS_TOKEN);
+        if ($access === false || $access === '') {
+            return false;
+        }
+        $exp = getenv(ConfigNames::DIADOC_ACCESS_EXPIRES_AT);
+        $this->api->setOAuthSession(
+            $access,
+            getenv(ConfigNames::DIADOC_REFRESH_TOKEN) ?: null,
+            $exp !== false && $exp !== '' ? (int) $exp : null
+        );
+
+        return true;
     }
 }

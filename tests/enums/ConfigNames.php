@@ -9,6 +9,8 @@ class ConfigNames
     public const OAUTH_CLIENT_ID = 'OAUTH_CLIENT_ID';
     public const OAUTH_CLIENT_SECRET = 'OAUTH_CLIENT_SECRET';
     public const OAUTH_IDENTITY_URL = 'OAUTH_IDENTITY_URL';
+    public const OAUTH_TOKEN_SOURCE = 'OAUTH_TOKEN_SOURCE';
+    public const OAUTH_IGNORE_CACHE = 'OAUTH_IGNORE_CACHE';
     public const DIADOC_URL = 'DIADOC_URL';
     public const DIADOC_ACCESS_TOKEN = 'DIADOC_ACCESS_TOKEN';
     public const DIADOC_REFRESH_TOKEN = 'DIADOC_REFRESH_TOKEN';
